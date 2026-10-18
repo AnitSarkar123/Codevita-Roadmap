@@ -5,9 +5,28 @@
 
   // ---------- storage (safe) ----------
   const KEY = "cv14-plan-v2";
-  let state = { done: {}, start: null, exam: null, theme: null, open: {} };
+  let state = { done: {}, start: null, exam: null, theme: null, open: {}, rev: [] };
   try { const raw = localStorage.getItem(KEY); if (raw) state = Object.assign(state, JSON.parse(raw)); } catch (e) {}
+  if (!Array.isArray(state.rev)) state.rev = [];
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+
+  // ---------- revision helpers ----------
+  const ytIdFrom = (input) => {
+    const s = String(input || "").trim();
+    if (!s) return "";
+    let m = s.match(/[?&]v=([A-Za-z0-9_-]{6,})/); if (m) return m[1];
+    m = s.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/); if (m) return m[1];
+    m = s.match(/\/(?:embed|shorts|live)\/([A-Za-z0-9_-]{6,})/); if (m) return m[1];
+    m = s.match(/^([A-Za-z0-9_-]{11})$/); if (m) return m[1];
+    return "";
+  };
+  const ytUrl = (id) => `https://www.youtube.com/watch?v=${id}`;
+  const revFind = (type, url) => state.rev.find((r) => r.type === type && (r.url || "").toLowerCase() === String(url || "").toLowerCase());
+  const isInRev = (type, url) => !!revFind(type, url);
+  const revBtn = (type, title, url, extra = {}) => {
+    const added = isInRev(type, url);
+    return `<button type="button" class="rev-btn${added ? " added" : ""}" data-rev-type="${esc(type)}" data-rev-title="${esc(title)}" data-rev-url="${esc(url)}" data-day="${extra.day || ""}" data-kind="${esc(extra.kind || "")}" data-diff="${esc(extra.diff || "")}" data-topic="${esc(extra.topic || "")}" data-thumb="${esc(extra.thumb || "")}" title="${added ? "Remove from revision" : "Add to revision hub"}">${added ? "✓ Added" : "+ Revision"}</button>`;
+  };
 
   // ---------- theme ----------
   const applyTheme = () => { if (state.theme) document.documentElement.setAttribute("data-theme", state.theme); };
@@ -126,7 +145,7 @@
         <span class="item-text"><span class="vt">${esc(v.t)}</span><span class="sub">YouTube · Padho with Pratyush</span></span>
       </a>`;
   const videoList = (d, vids, kind) => vids.map((v, i) =>
-    li(itemId(d.day, kind, v.id), `<span class="order">${String(i + 1).padStart(2, "0")}</span>${vidLink(v)}`)).join("");
+    li(itemId(d.day, kind, v.id), `<span class="order">${String(i + 1).padStart(2, "0")}</span>${vidLink(v)}${revBtn("video", v.t, ytUrl(v.id), { day: d.day, thumb: `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg` })}`)).join("");
 
   const qList = (d, qs, kind = "q") => qs.map((q) => {
     const id = itemId(d.day, kind, q.t);
@@ -134,7 +153,7 @@
     const diff = q.d ? `<span class="diff ${esc(q.d.split("–")[0])}">${esc(q.d)}</span>` : "";
     const stretch = q.s ? `<span class="tag stretch">Stretch</span>` : "";
     const sub = q.topic ? `<span class="sub">${esc(q.topic)}</span>` : "";
-    return li(id, `<span class="item-text">${tag}<a href="${esc(q.url)}" target="_blank" rel="noopener">${esc(q.t)}</a>${diff}${stretch}${sub}</span>`);
+    return li(id, `<span class="item-text">${tag}<a href="${esc(q.url)}" target="_blank" rel="noopener">${esc(q.t)}</a>${diff}${stretch}${sub}</span>${revBtn("question", q.t, q.url, { day: d.day, kind: q.kind, diff: q.d || "", topic: q.topic || "" })}`);
   }).join("");
 
   const taskList = (d) => (d.tasks || []).map((t, i) => li(itemId(d.day, "task", i), `<span class="item-text">${esc(t)}</span>`)).join("");
@@ -231,13 +250,16 @@
   const renderBank = (filter = "") => {
     const f = filter.trim().toLowerCase();
     const rows = [...bank.values()].filter((q) => !f || (q.t + " " + (q.topic || "")).toLowerCase().includes(f));
+    $("#pyqHeadRev")?.remove();
+    document.querySelector(".pyq-table thead tr")?.insertAdjacentHTML("beforeend", `<th id="pyqHeadRev">Revise</th>`);
     $("#pyqBody").innerHTML = rows.map((q) => `<tr>
       <td><a href="${esc(q.url)}" target="_blank" rel="noopener">${esc(q.t)}</a></td>
       <td><span class="tag ${q.kind}">${q.kind === "pyq" ? "PYQ" : "Official sample"}</span></td>
       <td>${esc(q.topic || "")}</td>
       <td><span class="diff ${esc(q.d)}" style="margin:0">${esc(q.d)}</span></td>
-      <td>${q.days.map((n) => `<a class="daylink" href="#day-${n}" data-goto="${n}">Day ${n}</a>`).join(", ")}</td></tr>`).join("") ||
-      `<tr><td colspan="5" class="muted">No match.</td></tr>`;
+      <td>${q.days.map((n) => `<a class="daylink" href="#day-${n}" data-goto="${n}">Day ${n}</a>`).join(", ")}</td>
+      <td>${revBtn("question", q.t, q.url, { day: q.days[0] || "", kind: q.kind, diff: q.d, topic: q.topic || "" })}</td></tr>`).join("") ||
+      `<tr><td colspan="6" class="muted">No match.</td></tr>`;
   };
   $("#pyqSearch").addEventListener("input", (e) => renderBank(e.target.value));
   document.addEventListener("click", (e) => {
@@ -246,21 +268,95 @@
   });
 
   // ---------- mocks ----------
-  $("#mockGrid").innerHTML = PLAN.filter((d) => d.type === "mock" || d.type === "practice").map((d) => `<div class="mock-card ${d.type}">
+  const renderMocks = () => {
+    $("#mockGrid").innerHTML = PLAN.filter((d) => d.type === "mock" || d.type === "practice").map((d) => `<div class="mock-card ${d.type}">
       <span class="tag ${d.type === "mock" ? "mock" : "other"}" style="align-self:flex-start">${d.type === "mock" ? esc(d.title.split(" — ")[0]) : "Weekend practice"} · Day ${d.day}</span>
       <h3>${esc(d.title.includes(" — ") ? d.title.split(" — ")[1] : d.title.replace("Weekend Practice: ", ""))}</h3>
       <p>${esc(d.goal)}</p>
-      <ul>${d.questions.map((q) => `<li><a href="${esc(q.url)}" target="_blank" rel="noopener">${esc(q.t)}</a></li>`).join("")}</ul>
+      <ul>${d.questions.map((q) => `<li><a href="${esc(q.url)}" target="_blank" rel="noopener">${esc(q.t)}</a> ${revBtn("question", q.t, q.url, { day: d.day, kind: q.kind, diff: q.d || "", topic: q.topic || "" })}</li>`).join("")}</ul>
       <a class="btn small" href="#day-${d.day}" data-goto="${d.day}">Open Day ${d.day}</a>
     </div>`).join("");
+  };
 
   // ---------- bonus ----------
   const renderBonus = () => {
     $("#bonusGrid").innerHTML = BONUS.map((b, bi) => `<div class="bonus-card">
       <h3>${esc(b.title)}</h3><p class="muted">${esc(b.note)}</p>
-      <ul class="items">${b.videos.map((v) => li(itemId("bonus" + bi, "vid", v.id), vidLink(v))).join("")}</ul>
+      <ul class="items">${b.videos.map((v) => li(itemId("bonus" + bi, "vid", v.id), `${vidLink(v)}${revBtn("video", v.t, ytUrl(v.id), { thumb: `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg` })}`)).join("")}</ul>
     </div>`).join("");
   };
 
-  renderTabs(); renderDays(); renderBank(); renderBonus(); renderFit();
+  // ---------- revision hub ----------
+  let revFilter = "all";
+  const revCard = (r) => {
+    const dayTag = r.day ? `<span class="tag other">Day ${esc(String(r.day))}</span>` : (r.custom ? `<span class="tag stretch">My add</span>` : "");
+    const meta = r.type === "video"
+      ? (r.note ? `<span class="sub">${esc(r.note)}</span>` : `<span class="sub">YouTube</span>`)
+      : `${r.kind ? `<span class="tag ${esc(r.kind)}">${esc(String(r.kind).toUpperCase())}</span>` : ""}${r.diff ? `<span class="diff ${esc(String(r.diff).split("–")[0])}">${esc(r.diff)}</span>` : ""}${r.topic ? `<span class="sub">${esc(r.topic)}</span>` : ""}`;
+    const thumb = r.type === "video" && r.thumb ? `<span class="thumb" style="background-image:url('${esc(r.thumb)}')"></span>` : "";
+    return `<div class="rev-card">${thumb}
+      <div class="rev-main"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title)}</a><div class="rev-meta">${dayTag}${meta}</div></div>
+      <div class="rev-actions">${revBtn(r.type, r.title, r.url, r)}<button type="button" class="btn ghost small" data-rev-del="${esc(r.type)}|${esc(r.url)}">Remove</button></div>
+    </div>`;
+  };
+  const renderRev = () => {
+    const f = ($("#revSearch") ? $("#revSearch").value : "").trim().toLowerCase();
+    const match = (r) => (!f || ((r.title || "") + " " + (r.topic || "") + " " + (r.note || "")).toLowerCase().includes(f)) && (revFilter === "all" || r.type === revFilter);
+    const vids = state.rev.filter((r) => r.type === "video" && match(r));
+    const qs = state.rev.filter((r) => r.type === "question" && match(r));
+    if ($("#revVideos")) $("#revVideos").innerHTML = vids.length ? vids.map(revCard).join("") : `<p class="empty-note">No videos yet — hit "+ Revision" on any video above.</p>`;
+    if ($("#revQuestions")) $("#revQuestions").innerHTML = qs.length ? qs.map(revCard).join("") : `<p class="empty-note">No questions yet — hit "+ Revision" on any problem above.</p>`;
+    if ($("#revCount")) $("#revCount").textContent = `${state.rev.length} saved`;
+    if ($("#revCountNav")) $("#revCountNav").textContent = state.rev.length ? `(${state.rev.length})` : "";
+    document.querySelectorAll("#revTabs .tab").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.revfilter === revFilter)));
+  };
+  const refreshRevButtons = () => { renderDays(); renderBank($("#pyqSearch") ? $("#pyqSearch").value : ""); renderMocks(); renderBonus(); renderRev(); };
+  const toggleRev = (btn) => {
+    const type = btn.dataset.revType, url = btn.dataset.revUrl, title = btn.dataset.revTitle || url;
+    const ex = revFind(type, url);
+    if (ex) state.rev = state.rev.filter((r) => r !== ex);
+    else state.rev.unshift({ type, title, url, day: btn.dataset.day || "", kind: btn.dataset.kind || "", diff: btn.dataset.diff || "", topic: btn.dataset.topic || "", thumb: btn.dataset.thumb || "", note: "", custom: false, addedAt: Date.now() });
+    save(); refreshRevButtons();
+  };
+  document.addEventListener("click", (e) => {
+    const rb = e.target.closest("[data-rev-type]");
+    if (rb) { e.preventDefault(); toggleRev(rb); return; }
+    const del = e.target.closest("[data-rev-del]");
+    if (del) {
+      const parts = String(del.dataset.revDel).split("|");
+      const t = parts.shift(), url = parts.join("|");
+      state.rev = state.rev.filter((r) => !(r.type === t && r.url === url));
+      save(); refreshRevButtons();
+    }
+  });
+  $("#revTabs")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-revfilter]"); if (!b) return;
+    revFilter = b.dataset.revfilter; renderRev();
+  });
+  $("#revSearch")?.addEventListener("input", () => renderRev());
+  $("#revVideoForm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const title = $("#revVideoTitle").value.trim(), raw = $("#revVideoUrl").value.trim(), note = $("#revVideoNote").value.trim();
+    const id = ytIdFrom(raw);
+    if (!title || !id) { alert("Paste a valid YouTube link (or 11-char video ID) + title."); return; }
+    const url = ytUrl(id);
+    if (revFind("video", url)) { alert("Already in revision."); return; }
+    state.rev.unshift({ type: "video", title, url, day: "", kind: "yt", diff: "", topic: "", thumb: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`, note, custom: true, addedAt: Date.now() });
+    e.target.reset(); save(); refreshRevButtons();
+  });
+  $("#revQuestionForm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const title = $("#revQuestionTitle").value.trim(), url = $("#revQuestionUrl").value.trim();
+    const topic = $("#revQuestionTopic").value.trim(), diff = $("#revQuestionDiff").value;
+    if (!title || !url) { alert("Add a title + link."); return; }
+    if (revFind("question", url)) { alert("Already in revision."); return; }
+    state.rev.unshift({ type: "question", title, url, day: "", kind: "other", diff, topic, thumb: "", note: "", custom: true, addedAt: Date.now() });
+    e.target.reset(); save(); refreshRevButtons();
+  });
+  $("#revClear")?.addEventListener("click", () => {
+    if (!state.rev.length) return;
+    if (confirm("Remove everything from revision hub?")) { state.rev = []; save(); refreshRevButtons(); }
+  });
+
+  renderTabs(); renderDays(); renderBank(); renderMocks(); renderBonus(); renderRev(); renderFit();
 })();

@@ -22,6 +22,7 @@
         <a href="#plan">Plan</a>
         <a href="#pyq">PYQs</a>
         <a href="#mocks">Mocks</a>
+        <a href="#revision">Revision <span id="revCountNav"></span></a>
         <a href="#bonus">Bonus</a>
         <a href="#checklist">Exam day</a>
       </nav>
@@ -145,6 +146,50 @@
         <h2>Mock tests</h2>
         <p class="section-sub">Weekend practice in weeks 1–3, then five full 3-hour simulations — the new Season 14 round length.</p>
         <div class="mock-grid" id="mockGrid"></div>
+      </div>
+    </section>
+
+    <!-- REVISION HUB -->
+    <section id="revision" class="section alt">
+      <div class="wrap">
+        <h2>My revision hub <span class="pill" id="revCount">0 saved</span></h2>
+        <p class="section-sub">Tap <strong>“+ Revision”</strong> beside any video or question in the plan and it lands here. You can also paste your own YouTube link or question link below — everything saves in this browser.</p>
+
+        <div class="rev-add-grid">
+          <form class="rev-form" id="revVideoForm">
+            <h3>Add a video</h3>
+            <label>Title<input type="text" id="revVideoTitle" placeholder="e.g. DP Revision — Striver" required maxlength="120"></label>
+            <label>YouTube link or ID<input type="text" id="revVideoUrl" placeholder="Paste YouTube URL or video ID…" required></label>
+            <label>Note (optional)<input type="text" id="revVideoNote" placeholder="e.g. Rewatch before Mock 3" maxlength="120"></label>
+            <button class="btn primary small" type="submit">+ Add video</button>
+          </form>
+          <form class="rev-form" id="revQuestionForm">
+            <h3>Add a question</h3>
+            <label>Title<input type="text" id="revQuestionTitle" placeholder="e.g. Trapping Rain Water" required maxlength="120"></label>
+            <label>Link<input type="url" id="revQuestionUrl" placeholder="https://…" required></label>
+            <div class="rev-row">
+              <label>Topic<input type="text" id="revQuestionTopic" placeholder="e.g. Arrays" maxlength="60"></label>
+              <label>Level<select id="revQuestionDiff"><option>Easy</option><option selected>Medium</option><option>Hard</option></select></label>
+            </div>
+            <button class="btn primary small" type="submit">+ Add question</button>
+          </form>
+        </div>
+
+        <div class="tabs" role="tablist" id="revTabs">
+          <button class="tab" data-revfilter="all" aria-selected="true">All</button>
+          <button class="tab" data-revfilter="video" aria-selected="false">Videos</button>
+          <button class="tab" data-revfilter="question" aria-selected="false">Questions</button>
+        </div>
+        <div class="rev-search-row">
+          <input type="search" id="revSearch" placeholder="Search revision…" aria-label="Search revision">
+          <button class="btn ghost small" id="revClear">Clear all</button>
+        </div>
+
+        <h3 class="rev-h">Videos to rewatch</h3>
+        <div class="rev-grid" id="revVideos"></div>
+        <h3 class="rev-h">Questions to redo</h3>
+        <div class="rev-grid" id="revQuestions"></div>
+        <p class="note">Tip: open a Day, tick “+ Revision” on anything shaky — it appears here with its Day number.</p>
       </div>
     </section>
 
